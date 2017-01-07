@@ -76,14 +76,20 @@ class Bowerphp
      */
     public function installPackage(PackageInterface $package, InstallerInterface $installer, $isDependency = false)
     {
+        $requestedPackage = clone $package;
+
         if (strpos($package->getName(), 'github') !== false) {
             // install from a github endpoint
             $name = basename($package->getName(), '.git');
+
             $repoUrl = $package->getName();
             $package = new Package($name, $package->getRequiredVersion());
             $this->repository->setUrl($repoUrl)->setHttpClient($this->githubClient);
             $package->setRepository($this->repository);
+
+            $this->output->writelnInfoPackage($requestedPackage, 'resolve', $this->packageString($package));
             $packageTag = $this->repository->findPackage($package->getRequiredVersion());
+
             if (is_null($packageTag)) {
                 throw new RuntimeException(sprintf('Cannot find package %s version %s.', $package->getName(), $package->getRequiredVersion()));
             }
@@ -98,19 +104,22 @@ class Bowerphp
 
         // if package is already installed, match current version with latest available version
         if ($this->isPackageInstalled($package)) {
+            $this->output->writelnInfoPackage($requestedPackage, 'cached', $this->packageString($package));
             $packageBower = $this->config->getPackageBowerFileContent($package);
+
+            $this->output->writelnInfoPackage($requestedPackage, 'validate', sprintf('%s against %s', $package->getRequiredVersion(), $this->packageString($package)));
             if ($packageTag == $packageBower['version']) {
                 // if version is fully matching, there's no need to install
                 return;
             }
+        } else {
+            $this->output->writelnInfoPackage($requestedPackage, 'not cached', $this->packageString($package));
         }
 
-        $this->output->writelnInfoPackage($package);
-
-        $this->output->writelnInstalledPackage($package);
-
+        $this->output->writelnInfoPackage($requestedPackage, 'download', $this->repository->getUrl());
         $this->cachePackage($package);
 
+        $this->output->writelnInfoPackage($requestedPackage, 'install', $this->packageString($package));
         $installer->install($package);
 
         $overrides = $this->config->getOverrideFor($package->getName());
@@ -462,5 +471,14 @@ class Bowerphp
                 $this->output->writelnNoBowerJsonFile();
             }
         }
+    }
+
+    /**
+     * @param PackageInterface $package
+     * @return string
+     */
+    public function packageString(PackageInterface $package)
+    {
+        return sprintf('%s#%s', $package->getName(), $package->getVersion());
     }
 }
